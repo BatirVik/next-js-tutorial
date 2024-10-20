@@ -1,11 +1,7 @@
 import bcrypt from "bcrypt";
 import { invoices, customers, revenue, users } from "../lib/placeholder-data";
-import { PoolClient, Pool } from "pg";
-
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
-  query_timeout: 5000,
-});
+import { PoolClient } from "pg";
+import { pool } from "../lib/db";
 
 async function seedUsers(client: PoolClient) {
   await client.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
@@ -119,7 +115,6 @@ export async function GET() {
     await client.query(`COMMIT`);
     return Response.json({ message: "Database seeded successfully" });
   } catch (error) {
-    console.error(error);
     await client.query(`ROLLBACK`);
     return Response.json({ error }, { status: 500 });
   } finally {
