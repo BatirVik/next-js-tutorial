@@ -81,35 +81,38 @@ export async function fetchCardData(client: PoolClient): Promise<CardDate> {
   }
 }
 
-const ITEMS_PER_PAGE = 6;
 export async function fetchFilteredInvoices(
-  query: string,
-  currentPage: number,
-) {
-  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
-
+  client: PoolClient,
+  {
+    query,
+    currentPage,
+    itemsPerPage,
+  }: { query: string; currentPage: number; itemsPerPage: number },
+): Promise<InvoicesTable[]> {
+  const offset = (currentPage - 1) * itemsPerPage;
+  const text = `
+    SELECT
+      invoices.id,
+      invoices.amount,
+      invoices.date,
+      invoices.status,
+      customers.name,
+      customers.email,
+      customers.image_url
+    FROM invoices
+    JOIN customers ON invoices.customer_id = customers.id
+    WHERE
+      customers.name ILIKE $1 OR
+      customers.email ILIKE $1 OR
+      invoices.amount::text ILIKE $1 OR
+      invoices.date::text ILIKE $1 OR
+      invoices.status ILIKE $1
+    ORDER BY invoices.date DESC
+    LIMIT $2 OFFSET $3
+  `;
+  const values = [`%${query}%`, itemsPerPage, offset];
   try {
-    const invoices = await sql<InvoicesTable>`
-      SELECT
-        invoices.id,
-        invoices.amount,
-        invoices.date,
-        invoices.status,
-        customers.name,
-        customers.email,
-        customers.image_url
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      WHERE
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
-      ORDER BY invoices.date DESC
-      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
-    `;
-
+    const invoices = await client.query<InvoicesTable>(text, values);
     return invoices.rows;
   } catch (error) {
     console.error("Database Error:", error);
@@ -117,20 +120,25 @@ export async function fetchFilteredInvoices(
   }
 }
 
-export async function fetchInvoicesPages(query: string) {
-  try {
-    const count = await sql`SELECT COUNT(*)
+export async function fetchInvoicesPages(
+  client: PoolClient,
+  { query, itemsPerPage }: { query: string; itemsPerPage: number },
+): Promise<number> {
+  const text = `
+    SELECT COUNT(*)
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE
-      customers.name ILIKE ${`%${query}%`} OR
-      customers.email ILIKE ${`%${query}%`} OR
-      invoices.amount::text ILIKE ${`%${query}%`} OR
-      invoices.date::text ILIKE ${`%${query}%`} OR
-      invoices.status ILIKE ${`%${query}%`}
+      customers.name ILIKE $1 OR
+      customers.email ILIKE $1 OR
+      invoices.amount::text ILIKE $1 OR
+      invoices.date::text ILIKE $1 OR
+      invoices.status ILIKE $1
   `;
-
-    const totalPages = Math.ceil(Number(count.rows[0].count) / ITEMS_PER_PAGE);
+  const values = [`%${query}%`];
+  try {
+    const count = await client.query(text, values);
+    const totalPages = Math.ceil(Number(count.rows[0].count) / itemsPerPage);
     return totalPages;
   } catch (error) {
     console.error("Database Error:", error);
